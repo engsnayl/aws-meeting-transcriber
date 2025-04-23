@@ -1,0 +1,23 @@
+﻿# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraformrc
+terraform.rc
+crash.log
+
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Large files
+*.exe
+*.zip
+*.tar.gz
+
+# Logs
+*.log

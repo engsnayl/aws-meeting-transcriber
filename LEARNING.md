@@ -187,7 +187,7 @@ approach.
 ### SES (Simple Email Service)
 
 SES sends the final summary email from `no-reply@engsnayl.com`. It's configured
-with a verified email identity (`main.tf:253-255`).
+with a verified email identity (`secrets.tf:12-14`).
 
 **Why SES over SNS?** SNS sends basic text notifications. SES sends formatted HTML
 emails with links, which is what you want for a meeting summary with clickable
@@ -200,7 +200,7 @@ Every component writes logs to CloudWatch:
 - Fargate logs go to `/ecs/whisper` (3-day retention)
 - Lambda logs go to `/aws/lambda/<function-name>` (auto-created by AWS)
 
-The 3-day retention on Fargate logs (`main.tf:165-168`) is a deliberate cost
+The 3-day retention on Fargate logs (`cloudwatch.tf:1-4`) is a deliberate cost
 decision. Storing logs indefinitely gets expensive. Three days is enough to debug
 a failed run.
 
@@ -233,7 +233,7 @@ Fargate removes those constraints:
 - **No time limit** -- the task runs until the script finishes, whether that's
   2 minutes or 2 hours
 - **Configurable resources** -- this project uses 1 vCPU and 2 GB RAM
-  (`main.tf:265-266`), but you could scale up to 4 vCPUs and 30 GB RAM
+  (`ecs.tf:9-10`), but you could scale up to 4 vCPUs and 30 GB RAM
 - **Full container environment** -- install anything you want (FFmpeg, PyTorch,
   system libraries) without worrying about Lambda's runtime restrictions
 - **No cold-start pressure** -- Lambda cold starts affect user-facing latency;
@@ -273,8 +273,8 @@ resources and time. Each service does what it's best at.
 
 ## 5. Reading the Terraform
 
-All infrastructure is defined in a single file: `main.tf`. This section explains
-how to read it.
+Infrastructure is split across multiple `.tf` files by concern. This section
+explains how to read them.
 
 ### What Terraform Does
 
@@ -287,43 +287,24 @@ The key benefit: your infrastructure is **version-controlled, repeatable, and
 reviewable**. You can destroy everything with `terraform destroy` and recreate it
 identically with `terraform apply`.
 
-### The Structure of main.tf
+### The File Structure
 
-The file follows this layout:
+The Terraform configuration is split by concern into separate files:
 
 ```
-main.tf
-  |
-  |-- Provider (line 10-12)
-  |     "I'm deploying to AWS in eu-west-1"
-  |
-  |-- S3 Resources (lines 14-43)
-  |     Bucket, public access block, folder prefixes
-  |
-  |-- IAM Roles & Policies (lines 45-163)
-  |     Who can do what
-  |
-  |-- CloudWatch (lines 165-168)
-  |     Where logs go
-  |
-  |-- Lambda Functions (lines 170-218)
-  |     The two event handlers
-  |
-  |-- S3 Event Notifications (lines 220-240)
-  |     Wiring S3 events to Lambda
-  |
-  |-- Secrets Manager (lines 242-251)
-  |     OpenAI API key storage
-  |
-  |-- SES (lines 253-255)
-  |     Email sender identity
-  |
-  |-- ECS Cluster & Task Definition (lines 257-295)
-  |     Fargate configuration
-  |
-  |-- Variables (lines 297-307)
-  |     Subnet IDs, security group ID
+main.tf          -- Provider config ("I'm deploying to AWS in eu-west-1")
+s3.tf            -- S3 bucket, public access block, folder prefixes
+iam.tf           -- All IAM roles and policies (ECS + Lambda)
+cloudwatch.tf    -- CloudWatch log group
+lambda.tf        -- Lambda functions, permissions, S3 event notifications
+secrets.tf       -- Secrets Manager (OpenAI key) + SES email identity
+ecs.tf           -- ECS cluster + Fargate task definition
+variables.tf     -- Subnet IDs, security group ID
 ```
+
+Terraform automatically merges all `.tf` files in a directory, so the split
+is purely for human readability -- it changes nothing about how `terraform plan`
+or `terraform apply` works.
 
 ### How to Read a Terraform Resource Block
 
@@ -427,7 +408,7 @@ key `uploads/meeting.mp3`.
 
 ### Step 2: S3 Fires an Event Notification
 
-The bucket has an event notification configured (`main.tf:220-227`):
+The bucket has an event notification configured (`lambda.tf:54-58`):
 
 ```hcl
 lambda_function {
@@ -490,7 +471,7 @@ response = ecs.run_task(
 ```
 
 The critical detail is `overrides.containerOverrides`. The task definition has
-`S3_KEY` set to `"PLACEHOLDER"` (`main.tf:282`). At runtime, the Lambda
+`S3_KEY` set to `"PLACEHOLDER"` (`ecs.tf:25-27`). At runtime, the Lambda
 **overrides** that with the actual file key (`uploads/meeting.mp3`). This is how
 a generic task definition gets parameterised for each specific file.
 
@@ -577,7 +558,7 @@ the work is done. You only pay for the seconds the container was active.
 ### Step 7: S3 Fires the Second Event Notification
 
 The transcript upload to `transcripts/meeting.mp3.txt` matches the second
-notification rule (`main.tf:229-234`):
+notification rule (`lambda.tf:60-65`):
 
 ```hcl
 lambda_function {
@@ -625,7 +606,7 @@ the audio length. Most of that time is Whisper transcription.
 
 ### What's Done Well
 
-**S3 public access is fully blocked** (`main.tf:19-25`):
+**S3 public access is fully blocked** (`s3.tf:6-12`):
 
 ```hcl
 resource "aws_s3_bucket_public_access_block" "block" {
@@ -643,14 +624,14 @@ accidentally expose your recordings to the internet.
 variables. The Lambda retrieves it at runtime.
 
 **IAM policies use specific resource ARNs** where possible. The ECS S3 policy
-(`main.tf:65-84`) is scoped to the recordings bucket, not `"*"`.
+(`iam.tf:21-40`) is scoped to the recordings bucket, not `"*"`.
 
 **CloudWatch logging is enabled** for Fargate with short retention (3 days),
 balancing debuggability with cost.
 
 ### What Could Be Improved
 
-**1. The ECS `ecs:RunTask` permission uses `Resource: "*"`** (`main.tf:117`):
+**1. The ECS `ecs:RunTask` permission uses `Resource: "*"`** (`iam.tf:72`):
 
 ```hcl
 {
@@ -667,12 +648,12 @@ scoped to the specific task definition ARN:
 Resource = aws_ecs_task_definition.whisper_task.arn
 ```
 
-**2. The SES permission uses `Resource: "*"`** (`main.tf:159`):
+**2. The SES permission uses `Resource: "*"`** (`iam.tf:115`):
 
 This allows the Lambda to send email as *any* verified identity. It should be
 scoped to the specific SES identity ARN.
 
-**3. The task execution role and task role are the same** (`main.tf:267-268`):
+**3. The task execution role and task role are the same** (`ecs.tf:11-12`):
 
 ```hcl
 execution_role_arn = aws_iam_role.ecs_task_exec.arn
@@ -687,7 +668,7 @@ Sharing them means the container has permissions it doesn't need (like pulling
 images from ECR). Best practice is two separate roles.
 
 **4. The Secrets Manager secret has a placeholder value in Terraform**
-(`main.tf:248-250`):
+(`secrets.tf:7-9`):
 
 ```hcl
 secret_string = jsonencode({
@@ -788,7 +769,7 @@ dollars.
 
 ### Gotcha 1: The S3 Event Notification Ordering Problem
 
-The S3 notification (`main.tf:220-240`) has a `depends_on` that references Lambda
+The S3 notification (`lambda.tf:51-71`) has a `depends_on` that references Lambda
 permissions:
 
 ```hcl
@@ -818,7 +799,7 @@ source of "my Fargate task starts but immediately fails" debugging sessions.
 
 ### Gotcha 3: The PLACEHOLDER Environment Variable Pattern
 
-The task definition has `S3_KEY = "PLACEHOLDER"` (`main.tf:282`). This looks like
+The task definition has `S3_KEY = "PLACEHOLDER"` (`ecs.tf:25-27`). This looks like
 a mistake but it's intentional. The Lambda overrides it at runtime via
 `containerOverrides`. If you forget the override, the container will try to
 download a file literally called "PLACEHOLDER" from S3 and fail.
@@ -860,24 +841,15 @@ terraform {
 }
 ```
 
-### Gotcha 6: Single main.tf
+### Gotcha 6: Splitting Terraform Files
 
-All resources are in one file. This works for a small project, but gets hard to
-navigate as the infrastructure grows. A common pattern is to split by concern:
+Terraform merges all `.tf` files in a directory automatically. This project splits
+resources by concern (`main.tf`, `s3.tf`, `iam.tf`, `cloudwatch.tf`, `lambda.tf`,
+`secrets.tf`, `ecs.tf`, `variables.tf`). The split is purely for human readability
+-- it changes nothing about how `terraform plan` or `terraform apply` works.
 
-```
-terraform/
-  main.tf          # Provider config
-  s3.tf            # Bucket and notifications
-  iam.tf           # Roles and policies
-  lambda.tf        # Lambda functions
-  ecs.tf           # Cluster and task definitions
-  variables.tf     # Input variables
-  outputs.tf       # Output values
-```
-
-Terraform doesn't care about filenames -- it merges all `.tf` files in a directory.
-Splitting is purely for human readability.
+If you ever need to reorganise, just move resource blocks between files. As long
+as everything stays in the same directory, Terraform treats it identically.
 
 ### Gotcha 7: Docker Image Versioning
 

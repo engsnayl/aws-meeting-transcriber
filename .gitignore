@@ -1,4 +1,4 @@
-﻿# Terraform
+# Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -10,13 +10,27 @@ crash.log
 # Local .terraform directories
 **/.terraform/*
 
-# .tfstate files
-*.tfstate
-*.tfstate.*
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+*.dist-info/
+six.py
+
+# Bundled dependencies (install via pip, don't commit)
+dateutil/
+jmespath/
+s3transfer/
+urllib3/
+bin/
+
+# Build artifacts
+summary_lambda.zip
 
 # Large files
 *.exe
-*.zip
 *.tar.gz
 
 # Logs

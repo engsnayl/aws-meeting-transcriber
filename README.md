@@ -25,17 +25,18 @@ The architecture consists of:
 ## Directory Structure
 
 ```
-meeting-transcriber-terraform/
-├── main.tf                     # Terraform infrastructure definition
-├── summary_lambda.py           # OpenAI processing Lambda function
-├── build_and_deploy.sh         # Deployment script
-├── requirements.txt            # Python dependencies
-├── package_summary_lambda.sh   # Script to package the summary Lambda
-└── lambda_container_build/     # Lambda trigger container files
-    ├── lambda_function.py      # Lambda code to trigger ECS tasks
-    ├── main.py                 # Whisper transcription script for ECS
-    ├── Dockerfile              # Docker config for Lambda container
-    └── Dockerfile.ecs          # Docker config for ECS container
+aws-meeting-transcriber/
+├── main.tf              # Terraform provider config
+├── s3.tf                # S3 bucket, public access block, folder prefixes
+├── iam.tf               # IAM roles and policies (ECS + Lambda)
+├── cloudwatch.tf        # CloudWatch log group
+├── lambda.tf            # Lambda functions, permissions, S3 notifications
+├── secrets.tf           # Secrets Manager (OpenAI key) + SES identity
+├── ecs.tf               # ECS cluster + Fargate task definition
+├── variables.tf         # Subnet IDs, security group ID
+├── summary_lambda.py    # OpenAI processing Lambda function
+├── build_and_deploy.sh  # Builds containers, packages Lambda zip, deploys
+└── requirements.txt     # Python dependencies for summary Lambda
 ```
 
 ## Deployment Instructions
@@ -47,7 +48,7 @@ meeting-transcriber-terraform/
    ```
 
 2. **Update the OpenAI API key:**
-   Edit `main.tf` to specify your OpenAI API key in the `aws_secretsmanager_secret_version` resource, or plan to update it through the AWS console after deployment.
+   Edit `secrets.tf` to specify your OpenAI API key in the `aws_secretsmanager_secret_version` resource, or update it through the AWS console after deployment.
 
 3. **Build and deploy:**
    ```bash

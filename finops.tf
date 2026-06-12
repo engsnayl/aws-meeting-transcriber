@@ -102,6 +102,9 @@ resource "aws_bcmdataexports_export" "cur" {
           INCLUDE_RESOURCES                     = "TRUE"
           INCLUDE_SPLIT_COST_ALLOCATION_DATA    = "FALSE"
           INCLUDE_MANUAL_DISCOUNT_COMPATIBILITY = "FALSE"
+          # The Data Exports API injects this server-side; declaring it
+          # explicitly stops Terraform seeing post-create drift.
+          BILLING_VIEW_ARN = "arn:aws:billing::${data.aws_caller_identity.current.account_id}:billingview/primary"
         }
       }
     }

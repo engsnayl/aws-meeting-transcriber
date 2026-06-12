@@ -5,6 +5,36 @@
 # - Lambda for OpenAI summarisation + SES email
 # - IAM roles and secrets
 
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.46.0" # aws_bcmdataexports_export requires 5.46+
+    }
+  }
+}
+
 provider "aws" {
   region = "eu-west-1"
+
+  default_tags {
+    tags = {
+      project     = "meeting-transcriber"
+      environment = var.environment
+    }
+  }
+}
+
+# Data Exports (CUR 2.0) and the billing APIs only exist in us-east-1,
+# so FinOps resources that need it use this aliased provider.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      project     = "meeting-transcriber"
+      environment = var.environment
+    }
+  }
 }

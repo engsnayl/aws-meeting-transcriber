@@ -1,5 +1,9 @@
 resource "aws_ecs_cluster" "whisper_ecs_cluster" {
   name = "whisper-ecs-cluster-v2"
+
+  tags = {
+    component = "transcribe"
+  }
 }
 
 resource "aws_ecs_task_definition" "whisper_task" {
@@ -10,6 +14,10 @@ resource "aws_ecs_task_definition" "whisper_task" {
   memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_task_exec.arn
   task_role_arn            = aws_iam_role.ecs_task_exec.arn
+
+  tags = {
+    component = "transcribe"
+  }
 
   container_definitions = jsonencode([
     {

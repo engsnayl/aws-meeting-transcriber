@@ -11,6 +11,10 @@ resource "aws_iam_role" "ecs_task_exec" {
       Effect = "Allow"
     }]
   })
+
+  tags = {
+    component = "transcribe"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_attach" {
@@ -52,6 +56,11 @@ resource "aws_iam_role" "lambda_exec" {
       Effect = "Allow"
     }]
   })
+
+  # Shared by both the transcribe-trigger and summarise lambdas
+  tags = {
+    component = "shared"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_basic" {

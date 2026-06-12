@@ -1,6 +1,10 @@
 resource "aws_s3_bucket" "recordings" {
   bucket         = "snaylor-meeting-recordings-bucket"
   force_destroy  = true
+
+  tags = {
+    component = "ingest"
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "block" {

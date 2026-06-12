@@ -1,5 +1,9 @@
 resource "aws_secretsmanager_secret" "openai" {
   name = "openai-api-key"
+
+  tags = {
+    component = "summarise"
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "openai_value" {

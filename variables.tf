@@ -9,3 +9,15 @@ variable "subnet_ids" {
 variable "security_group_id" {
   default = "sg-02a7c01d00c08d0c0"
 }
+
+variable "environment" {
+  default = "prod"
+}
+
+variable "budget_alert_email" {
+  default = "engsnayl@gmail.com"
+}
+
+variable "monthly_budget_limit" {
+  default = "20"
+}

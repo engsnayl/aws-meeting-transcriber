@@ -14,6 +14,10 @@ resource "aws_lambda_function" "trigger_whisper" {
       SECURITY_GROUP = var.security_group_id
     }
   }
+
+  tags = {
+    component = "transcribe"
+  }
 }
 
 resource "aws_lambda_function" "summary_lambda" {
@@ -29,6 +33,10 @@ resource "aws_lambda_function" "summary_lambda" {
     variables = {
       OPENAI_SECRET_NAME = aws_secretsmanager_secret.openai.name
     }
+  }
+
+  tags = {
+    component = "summarise"
   }
 }
 

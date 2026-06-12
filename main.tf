@@ -6,6 +6,16 @@
 # - IAM roles and secrets
 
 terraform {
+  # State bucket is bootstrapped outside Terraform (AWS CLI) on purpose.
+  # Terraform 1.10+ native S3 locking; no DynamoDB table needed.
+  backend "s3" {
+    bucket       = "snaylor-meeting-transcriber-tfstate"
+    key          = "meeting-transcriber/terraform.tfstate"
+    region       = "eu-west-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

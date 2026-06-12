@@ -33,7 +33,8 @@ aws-meeting-transcriber/
 ├── lambda.tf            # Lambda functions, permissions, S3 notifications
 ├── secrets.tf           # Secrets Manager (OpenAI key) + SES identity
 ├── ecs.tf               # ECS cluster + Fargate task definition
-├── variables.tf         # Subnet IDs, security group ID
+├── finops.tf            # CUR 2.0 data export, Athena/Glue, cost budget
+├── variables.tf         # Subnet IDs, security group ID, FinOps settings
 ├── summary_lambda.py    # OpenAI processing Lambda function
 ├── build_and_deploy.sh  # Builds containers, packages Lambda zip, deploys
 └── requirements.txt     # Python dependencies for summary Lambda
@@ -103,6 +104,37 @@ Common issues:
 - **ECS task failing:** Verify task definition and check CloudWatch logs
 - **OpenAI API errors:** Confirm API key is correctly stored in Secrets Manager
 - **Email delivery issues:** Ensure SES sender identity is verified
+
+## FinOps / Cost Visibility
+
+`finops.tf` provisions a CUR 2.0 data export (hourly granularity, resource IDs, Parquet)
+into `snaylor-meeting-transcriber-cur-exports`, a Glue database and Athena workgroup for
+querying it, and a $20/month budget that emails at 80% actual and 100% forecasted spend.
+All taggable resources carry `project`/`environment` (via provider `default_tags`) plus a
+per-resource `component` tag (`ingest`, `transcribe`, `summarise`, `finops`, `shared`).
+
+### Manual steps Terraform cannot do
+
+- **Activate cost allocation tags.** After the first apply, the `project`, `environment`
+  and `component` tag keys must be activated in the Billing console (Billing → Cost
+  allocation tags). Tag keys only appear there up to 24 hours after they are first used
+  on a resource, and spend is attributed only from the activation date forwards. (The
+  `aws_ce_cost_allocation_tag` resource exists, but it fails until the keys have shown
+  up in billing data, so activation is kept manual.)
+- **First export delivery takes up to 24 hours**, and Data Exports does not backfill
+  earlier months automatically — request a backfill via the console if needed.
+- **Athena table creation.** Data Exports delivers Parquet files plus metadata, but does
+  not create the Glue table. After the first delivery, either run a one-off Glue crawler
+  over `s3://snaylor-meeting-transcriber-cur-exports/cur2/` targeting the
+  `meeting_transcriber_cur` database, or create the table with DDL in the
+  `meeting-transcriber-finops` workgroup.
+- **SES is not taggable.** `aws_ses_email_identity` has no tags, so the notify
+  component's SES spend cannot carry the `component` tag; SES costs show up under the
+  account-level `project` tag only via other tagged resources. Attribute SES spend by
+  service name in Athena instead.
+- **Budget scope.** The budget covers the whole account, not just this project. Once the
+  cost allocation tags are active you can narrow it with a `cost_filter` on
+  `TagKeyValue` (`user:project$meeting-transcriber`).
 
 ## Security Considerations
 

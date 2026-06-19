@@ -179,6 +179,100 @@ resource "aws_glue_catalog_database" "cur" {
   name = "meeting_transcriber_cur"
 }
 
+# ---------------------------------------------------------------------------
+# Glue crawler: catalogs the CUR 2.0 Parquet export into the Glue database
+# above so it can be queried in Athena. On-demand only (no schedule); run it
+# manually after apply with: aws glue start-crawler --name <crawler> --region eu-west-1
+#
+# Data path is s3://<bucket>/<prefix>/<export-name>/data — the prefix (cur2)
+# and export name (meeting-transcriber-cur) match the s3_destination and
+# export.name in aws_bcmdataexports_export.cur above. The export uses
+# OVERWRITE_REPORT (not file versioning), so the crawler sees one copy of
+# each file and Athena line items are not double-counted.
+# ---------------------------------------------------------------------------
+
+resource "aws_iam_role" "cur_crawler" {
+  name = "meeting-transcriber-cur-crawler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Action = "sts:AssumeRole",
+      Principal = {
+        Service = "glue.amazonaws.com"
+      },
+      Effect = "Allow"
+    }]
+  })
+
+  tags = {
+    component = "finops"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "cur_crawler_glue_service" {
+  role       = aws_iam_role.cur_crawler.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+# AWSGlueServiceRole only grants S3 access to buckets prefixed "aws-glue-",
+# so the crawler needs explicit read access to the CUR exports bucket and
+# its objects only.
+resource "aws_iam_role_policy" "cur_crawler_s3_read" {
+  name = "cur-crawler-s3-read"
+  role = aws_iam_role.cur_crawler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        Resource = [
+          aws_s3_bucket.cur_exports.arn,
+          "${aws_s3_bucket.cur_exports.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_glue_crawler" "cur" {
+  name          = "meeting-transcriber-cur-crawler"
+  role          = aws_iam_role.cur_crawler.arn
+  database_name = aws_glue_catalog_database.cur.name
+  description   = "On-demand crawler for the CUR 2.0 Parquet export; populates the Athena-queryable table."
+
+  s3_target {
+    path = "s3://${aws_s3_bucket.cur_exports.bucket}/cur2/meeting-transcriber-cur/data"
+  }
+
+  # Update the table schema in place; log (don't delete) tables/partitions
+  # that disappear, so a transient empty crawl never drops the table.
+  schema_change_policy {
+    update_behavior = "UPDATE_IN_DATABASE"
+    delete_behavior = "LOG"
+  }
+
+  # CUR data is partitioned by billing period; inherit the table's schema
+  # across partitions so per-partition drift doesn't fragment the table.
+  configuration = jsonencode({
+    Version = 1.0,
+    CrawlerOutput = {
+      Partitions = {
+        AddOrUpdateBehavior = "InheritFromTable"
+      }
+    }
+  })
+
+  tags = {
+    component = "finops"
+  }
+}
+
 resource "aws_athena_workgroup" "finops" {
   name = "meeting-transcriber-finops"
 

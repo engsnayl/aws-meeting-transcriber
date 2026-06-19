@@ -1,0 +1,9 @@
+# infracost.yml — config for the Infracost GitHub App.
+# The app reads this at the repo root and applies the usage assumptions in
+# infracost-usage.yml so the PR cost comment is usage-aware rather than
+# zero-usage. The Terraform root is the repository root (.tf files are flat
+# at the top level), so the project path is ".".
+version: 0.1
+projects:
+  - path: .
+    usage_file: infracost-usage.yml

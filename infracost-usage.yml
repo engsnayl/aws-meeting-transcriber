@@ -1,0 +1,79 @@
+# infracost-usage.yml
+#
+# ESTIMATED usage assumptions for the meeting-transcriber pipeline — NOT
+# measured figures. These are deliberately modest numbers sized for a
+# low-volume personal pipeline (a handful of meetings processed per week).
+# Tune them as real usage becomes known; the actual spend is tracked
+# separately via the CUR 2.0 export + Athena (see finops.tf / README).
+#
+# Infracost uses these values to turn otherwise-unpriced serverless usage
+# (Lambda invocations, S3 requests/storage, Secrets Manager API calls) into
+# a list-price monthly estimate. Only resources Infracost actually prices
+# and that exist in this config are listed below.
+#
+# Deliberately NOT listed (and why):
+#   * Fargate run time — Infracost only prices Fargate via an
+#     aws_ecs_service (continuous, by desired_count). This stack has no
+#     aws_ecs_service; the whisper task is launched ad-hoc via RunTask from
+#     the trigger Lambdas, which Infracost does not model. No usage knob
+#     exists for it, so Fargate compute is absent from the estimate.
+#   * SES (aws_ses_email_identity.sender) — Infracost has no cost component
+#     for SES, so a send-volume figure would be silently ignored.
+
+version: 0.1
+
+resource_usage:
+  # --- Lambda: pipeline triggers + summariser -----------------------------
+  # ~50 meetings/month flowing upload -> convert -> transcribe -> summarise.
+  # Trigger Lambdas are short (they just call ECS RunTask); the summariser
+  # is long (it calls the OpenAI API and writes the summary).
+
+  # Active ingest path: uploads/ -> converts the file, then kicks off ECS.
+  aws_lambda_function.file_converter_trigger:
+    monthly_requests: 50
+    request_duration_ms: 2000
+
+  # Active transcribe path: processed/ -> starts the Whisper Fargate task.
+  aws_lambda_function.trigger_whisper_zip:
+    monthly_requests: 50
+    request_duration_ms: 1000
+
+  # Active summarise path: transcripts/ -> OpenAI summary + SES email.
+  aws_lambda_function.summary_lambda:
+    monthly_requests: 50
+    request_duration_ms: 30000
+
+  # Legacy image-based transcribe trigger: wired with an S3 invoke
+  # permission but not in the current bucket notification, so effectively
+  # idle. Kept low rather than zero so it still shows in the estimate.
+  aws_lambda_function.trigger_whisper:
+    monthly_requests: 1
+    request_duration_ms: 1000
+
+  # --- S3 ------------------------------------------------------------------
+  # Audio in, transcripts/summaries out. Modest storage and request counts.
+  aws_s3_bucket.recordings:
+    standard:
+      storage_gb: 5
+      monthly_tier_1_requests: 2000   # PUT/COPY/POST/LIST
+      monthly_tier_2_requests: 5000   # GET/SELECT and all other
+
+  # CUR 2.0 parquet export (overwrites each refresh, 365-day expiry).
+  aws_s3_bucket.cur_exports:
+    standard:
+      storage_gb: 1
+      monthly_tier_1_requests: 500
+      monthly_tier_2_requests: 1000
+
+  # Athena query results (30-day expiry); only written when queries run.
+  aws_s3_bucket.athena_results:
+    standard:
+      storage_gb: 1
+      monthly_tier_1_requests: 500
+      monthly_tier_2_requests: 2000
+
+  # --- Secrets Manager -----------------------------------------------------
+  # Flat ~$0.40/secret/month dominates; the summariser fetches the OpenAI
+  # key per invocation, so a modest API-call count.
+  aws_secretsmanager_secret.openai:
+    monthly_requests: 500
